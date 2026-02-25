@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Birth Registration System</title>
+
+<style>
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    background: #f4f6f9;
+}
+
+header {
+    background: #2c3e50;
+    color: white;
+    padding: 15px;
+    text-align: center;
+}
+
+nav {
+    display: flex;
+    background: #34495e;
+}
+
+nav button {
+    flex: 1;
+    padding: 12px;
+    border: none;
+    background: none;
+    color: white;
+    cursor: pointer;
+}
+
+nav button:hover,
+nav button.active {
+    background: #1abc9c;
+}
+
+.section {
+    display: none;
+    padding: 20px;
+}
+
+.section.active {
+    display: block;
+}
+
+input, select, textarea {
+    width: 100%;
+    padding: 8px;
+    margin-bottom: 10px;
+}
+
+button.primary {
+    background: #1abc9c;
+    border: none;
+    padding: 10px;
+    color: white;
+    cursor: pointer;
+}
+
+button.danger {
+    background: #e74c3c;
+    border: none;
+    padding: 5px 8px;
+    color: white;
+    cursor: pointer;
+}
+
+button.edit {
+    background: #f39c12;
+    border: none;
+    padding: 5px 8px;
+    color: white;
+    cursor: pointer;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+th, td {
+    padding: 8px;
+    border: 1px solid #ddd;
+}
+
+th {
+    background: #2c3e50;
+    color: white;
+}
+
+.toast {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: #1abc9c;
+    color: white;
+    padding: 10px 15px;
+    display: none;
+}
+</style>
+</head>
+<body>
+
+<header>
+    <h2>Birth Registration System</h2>
+</header>
+
+<nav>
+    <button onclick="switchSection('dashboard')" class="active">Dashboard</button>
+    <button onclick="switchSection('register')">Register</button>
+    <button onclick="switchSection('records')">Records</button>
+    <button onclick="switchSection('search')">Search</button>
+</nav>
+
+<!-- DASHBOARD -->
+<div id="dashboard" class="section active">
+    <h3>Statistics</h3>
+    <p>Total Records: <strong id="totalRecords">0</strong></p>
+    <p>This Year: <strong id="thisYearCount">0</strong></p>
+    <p>Male / Female: <strong id="genderRatio">0/0</strong></p>
+</div>
+
+<!-- REGISTER -->
+<div id="register" class="section">
+    <h3>Register Birth</h3>
+    <form id="birthForm">
+        <input id="childName" placeholder="Child Name" required>
+        <select id="gender" required>
+            <option value="">Select Gender</option>
+            <option>Male</option>
+            <option>Female</option>
+        </select>
+        <input type="date" id="birthDate" required>
+        <input id="birthPlace" placeholder="Birth Place" required>
+        <input id="motherName" placeholder="Mother Name" required>
+        <input id="fatherName" placeholder="Father Name" required>
+        <textarea id="address" placeholder="Address" required></textarea>
+        <button class="primary">Save</button>
+    </form>
+</div>
+
+<!-- RECORDS -->
+<div id="records" class="section">
+    <h3>Birth Records</h3>
+    <button onclick="exportRecords()" class="primary">Export CSV</button>
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Gender</th>
+                <th>Date</th>
+                <th>Place</th>
+                <th>Mother</th>
+                <th>Father</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="recordsBody"></tbody>
+    </table>
+</div>
+
+<!-- SEARCH -->
+<div id="search" class="section">
+    <h3>Search Records</h3>
+    <input id="searchInput" placeholder="Type at least 2 letters..." onkeyup="searchRecords()">
+    <div id="searchResults"></div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+let records = [];
+let editingId = null;
+
+document.addEventListener("DOMContentLoaded", init);
+
+function init() {
+    loadFromStorage();
+    updateDashboard();
+    loadRecords();
+}
+
+function loadFromStorage() {
+    const saved = localStorage.getItem("birthRecords");
+    records = saved ? JSON.parse(saved) : [];
+}
+
+function saveToStorage() {
+    localStorage.setItem("birthRecords", JSON.stringify(records));
+}
+
+function generateId() {
+    return "BR-" + Date.now();
+}
+
+document.getElementById("birthForm").addEventListener("submit", function(e){
+    e.preventDefault();
+
+    const record = {
+        id: editingId ? editingId : generateId(),
+        childName: value("childName"),
+        gender: value("gender"),
+        birthDate: value("birthDate"),
+        birthPlace: value("birthPlace"),
+        motherName: value("motherName"),
+        fatherName: value("fatherName"),
+        address: value("address"),
+        year: new Date(value("birthDate")).getFullYear()
+    };
+
+    if (!record.childName || !record.gender || !record.birthDate ||
+        !record.birthPlace || !record.motherName ||
+        !record.fatherName || !record.address) {
+        showToast("Fill all required fields", true);
+        return;
+    }
+
+    if (editingId) {
+        records = records.map(r => r.id === editingId ? record : r);
+        editingId = null;
+        showToast("Record updated");
+    } else {
+        records.push(record);
+        showToast("Record added");
+    }
+
+    saveToStorage();
+    this.reset();
+    updateDashboard();
+    loadRecords();
+    switchSection("records");
+});
+
+function loadRecords() {
+    const body = document.getElementById("recordsBody");
+    body.innerHTML = "";
+
+    if (records.length === 0) {
+        body.innerHTML = "<tr><td colspan='8'>No records</td></tr>";
+        return;
+    }
+
+    records.forEach(r => {
+        body.innerHTML += `
+        <tr>
+            <td>${r.id}</td>
+            <td>${r.childName}</td>
+            <td>${r.gender}</td>
+            <td>${r.birthDate}</td>
+            <td>${r.birthPlace}</td>
+            <td>${r.motherName}</td>
+            <td>${r.fatherName}</td>
+            <td>
+                <button class="edit" onclick="editRecord('${r.id}')">Edit</button>
+                <button class="danger" onclick="deleteRecord('${r.id}')">Delete</button>
+            </td>
+        </tr>`;
+    });
+}
+
+function editRecord(id) {
+    const r = records.find(x => x.id === id);
+    if (!r) return;
+
+    editingId = id;
+
+    document.getElementById("childName").value = r.childName;
+    document.getElementById("gender").value = r.gender;
+    document.getElementById("birthDate").value = r.birthDate;
+    document.getElementById("birthPlace").value = r.birthPlace;
+    document.getElementById("motherName").value = r.motherName;
+    document.getElementById("fatherName").value = r.fatherName;
+    document.getElementById("address").value = r.address;
+
+    switchSection("register");
+}
+
+function deleteRecord(id) {
+    if (!confirm("Delete this record?")) return;
+    records = records.filter(r => r.id !== id);
+    saveToStorage();
+    updateDashboard();
+    loadRecords();
+}
+
+function searchRecords() {
+    const term = value("searchInput").toLowerCase();
+    const results = document.getElementById("searchResults");
+
+    if (term.length < 2) {
+        results.innerHTML = "";
+        return;
+    }
+
+    const filtered = records.filter(r =>
+        r.childName.toLowerCase().includes(term)
+    );
+
+    results.innerHTML = filtered.map(r =>
+        `<div>${r.childName} - ${r.birthDate}</div>`
+    ).join("");
+}
+
+function updateDashboard() {
+    document.getElementById("totalRecords").textContent = records.length;
+    const year = new Date().getFullYear();
+    document.getElementById("thisYearCount").textContent =
+        records.filter(r => r.year === year).length;
+
+    const males = records.filter(r => r.gender === "Male").length;
+    const females = records.filter(r => r.gender === "Female").length;
+    document.getElementById("genderRatio").textContent =
+        males + "/" + females;
+}
+
+function exportRecords() {
+    if (records.length === 0) {
+        showToast("No data to export", true);
+        return;
+    }
+
+    const headers = Object.keys(records[0]);
+    const rows = records.map(r =>
+        headers.map(h => `"${r[h] || ""}"`).join(",")
+    );
+
+    const csv = [headers.join(","), ...rows].join("\n");
+    const blob = new Blob([csv], {type: "text/csv"});
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "birth_records.csv";
+    a.click();
+
+    URL.revokeObjectURL(url);
+}
+
+function switchSection(id) {
+    document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
+    document.getElementById(id).classList.add("active");
+
+    document.querySelectorAll("nav button").forEach(b => b.classList.remove("active"));
+    event.target.classList.add("active");
+}
+
+function value(id) {
+    return document.getElementById(id).value;
+}
+
+function showToast(msg, error=false) {
+    const t = document.getElementById("toast");
+    t.style.background = error ? "#e74c3c" : "#1abc9c";
+    t.textContent = msg;
+    t.style.display = "block";
+    setTimeout(() => t.style.display = "none", 3000);
+}
+</script>
+
+</body>
+</html>
